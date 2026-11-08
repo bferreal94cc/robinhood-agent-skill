@@ -1,0 +1,15 @@
+{
+  "mcp": {
+    "ibkr": {
+      "command": "uvx",
+      "args": ["ibkr-mcp"],
+      "env": {
+        "IBKR_HOST": "127.0.0.1",
+        "IBKR_PORT": "4001",
+        "IBKR_CLIENT_ID": "0",
+        "IBKR_ACCOUNT": "U1234567",
+        "IBKR_MCP_MARKET_DATA_TYPE": "LIVE"
+      }
+    }
+  }
+}

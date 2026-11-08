@@ -1,0 +1,16 @@
+# IBKR MCP Server Configuration for Hermes Agent
+# Add this to ~/.hermes/config.yaml under mcp_servers:
+
+mcp_servers:
+  ibkr:
+    command: uvx
+    args:
+      - ibkr-mcp
+    env:
+      IBKR_HOST: "${IBKR_HOST}"
+      IBKR_PORT: "${IBKR_PORT}"
+      IBKR_CLIENT_ID: "${IBKR_CLIENT_ID}"
+      IBKR_ACCOUNT: "${IBKR_ACCOUNT}"
+      IBKR_MCP_MARKET_DATA_TYPE: "${IBKR_MCP_MARKET_DATA_TYPE}"
+    timeout: 60
+    connect_timeout: 30

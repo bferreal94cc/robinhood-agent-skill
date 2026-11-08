@@ -166,6 +166,33 @@ The install script:
 6. Tests the MCP connection
 7. Prints next steps
 
+## IBKR API System (MVP)
+
+This repository now includes a parallel IBKR MCP setup path for Interactive Brokers:
+
+```bash
+# Interactive setup
+bash scripts/install_ibkr.sh
+
+# Non-interactive setup
+IBKR_ACCOUNT="U1234567" \
+IBKR_HOST="127.0.0.1" \
+IBKR_PORT="4001" \
+IBKR_CLIENT_ID="0" \
+IBKR_MCP_MARKET_DATA_TYPE="LIVE" \
+bash scripts/install_ibkr.sh --non-interactive
+```
+
+Included IBKR assets:
+- `IBKR_SKILL.md`
+- `scripts/install_ibkr.sh`
+- `templates/ibkr-*.json`
+- `templates/ibkr-config-snippet.yaml`
+
+Notes:
+- This setup is read-only and intended for portfolio research/monitoring workflows.
+- TWS or IB Gateway must be running with API access enabled.
+
 ## Cache Refresh Script
 
 ```bash
