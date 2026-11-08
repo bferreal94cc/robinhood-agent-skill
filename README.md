@@ -59,6 +59,8 @@ This repo includes `.github/workflows/refresh-robinhood-cache.yml`, which reads 
 python scripts/refresh_cache.py --json-only --force
 ```
 
+If required secrets are not configured, the workflow exits as a no-op (with notice logs) instead of failing.
+
 ### Hermes Agent
 
 Add to `~/.hermes/config.yaml`:
