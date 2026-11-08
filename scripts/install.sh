@@ -38,8 +38,16 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --non-interactive) NON_INTERACTIVE=true; shift ;;
     --skip-credentials) SKIP_CREDENTIALS=true; shift ;;
-    --agent) AGENT="$2"; shift 2 ;;
-    --source) SKILL_SOURCE="$2"; shift 2 ;;
+    --agent)
+      [[ $# -lt 2 ]] && fail "--agent requires a value"
+      AGENT="$2"
+      shift 2
+      ;;
+    --source)
+      [[ $# -lt 2 ]] && fail "--source requires a value"
+      SKILL_SOURCE="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: bash scripts/install.sh [options]"
       echo ""
@@ -83,7 +91,7 @@ fi
 
 # Check for Node.js (needed by some agents for MCP)
 if command -v node &>/dev/null; then
-  DIM "Node.js found: $(node --version)"
+  echo -e "${DIM}Node.js found: $(node --version)${RESET}"
 else
   warn "Node.js not found. Some agents require it for MCP subprocess management."
 fi
@@ -203,11 +211,8 @@ configure_hermes() {
     if grep -q "robinhood:" "$CONFIG_FILE" 2>/dev/null; then
       ok "Robinhood MCP already configured in config.yaml"
     else
-      # Append MCP config
+      # Add MCP config
       mkdir -p "$HERMES_DIR"
-      echo "" >> "$CONFIG_FILE"
-      echo "# Robinhood MCP Server (added by robinhood-agent-skill)" >> "$CONFIG_FILE"
-      echo "mcp_servers:" >> "$CONFIG_FILE"
       # Check if mcp_servers section exists
       if grep -q "^mcp_servers:" "$CONFIG_FILE" 2>/dev/null; then
         # Insert under existing mcp_servers
@@ -221,8 +226,9 @@ config['mcp_servers']['robinhood'] = {
     'command': 'uvx',
     'args': ['robinhood-mcp'],
     'env': {
-        'ROBINHOOD_USERNAME': '${RH_USERNAME}',
-        'ROBINHOOD_PASSWORD': '${RH_PASSWORD}',
+        'ROBINHOOD_USERNAME': '\${ROBINHOOD_USERNAME}',
+        'ROBINHOOD_PASSWORD': '\${ROBINHOOD_PASSWORD}',
+        'ROBINHOOD_TOTP_SECRET': '\${ROBINHOOD_TOTP_SECRET}',
     },
     'timeout': 60,
     'connect_timeout': 30,
@@ -232,15 +238,19 @@ with open('$CONFIG_FILE', 'w') as f:
 print('Added robinhood MCP config')
 " 2>/dev/null || warn "Could not auto-merge config. Add manually (see templates/)"
       else
-        # New config file or no mcp_servers section
+        # Existing config file with no mcp_servers section
         cat >> "$CONFIG_FILE" << 'YAML_EOF'
+
+# Robinhood MCP Server (added by robinhood-agent-skill)
+mcp_servers:
   robinhood:
     command: uvx
     args:
       - robinhood-mcp
     env:
-      ROBINHOOD_USERNAME: "${RH_USERNAME}"
-      ROBINHOOD_PASSWORD: "${RH_PASSWORD}"
+      ROBINHOOD_USERNAME: "${ROBINHOOD_USERNAME}"
+      ROBINHOOD_PASSWORD: "${ROBINHOOD_PASSWORD}"
+      ROBINHOOD_TOTP_SECRET: "${ROBINHOOD_TOTP_SECRET}"
     timeout: 60
     connect_timeout: 30
 YAML_EOF
@@ -257,10 +267,11 @@ mcp_servers:
     args:
       - robinhood-mcp
     env:
-      ROBINHOOD_USERNAME: "${RH_USERNAME}"
-      ROBINHOOD_PASSWORD: "${RH_PASSWORD}"
+      ROBINHOOD_USERNAME: "\${ROBINHOOD_USERNAME}"
+      ROBINHOOD_PASSWORD: "\${ROBINHOOD_PASSWORD}"
+      ROBINHOOD_TOTP_SECRET: "\${ROBINHOOD_TOTP_SECRET}"
     timeout: 60
-    connect_connect: 30
+    connect_timeout: 30
 YAML_EOF
     ok "Created new config.yaml with robinhood MCP config"
   fi

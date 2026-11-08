@@ -74,7 +74,12 @@ def is_cache_stale(cache_file: Path, max_age_minutes: int = 15):
     cache = load_existing_cache(cache_file)
     if not cache or "last_updated" not in cache:
         return True
-    last = datetime.fromisoformat(cache["last_updated"])
+    try:
+        last = datetime.fromisoformat(cache["last_updated"])
+    except (TypeError, ValueError):
+        return True
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     age = (now - last).total_seconds() / 60
     return age > max_age_minutes
@@ -95,6 +100,13 @@ def _fmt_pct(value):
     if value is None:
         return "N/A"
     return f"{value:+.2f}%"
+
+
+def _to_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +145,8 @@ def compute_deltas(current: dict, previous: dict):
         return deltas
 
     # Equity delta
-    curr_equity = current.get("portfolio", {}).get("total_equity", 0)
-    prev_equity = previous.get("portfolio", {}).get("total_equity", 0)
+    curr_equity = _to_float(current.get("portfolio", {}).get("total_equity", 0))
+    prev_equity = _to_float(previous.get("portfolio", {}).get("total_equity", 0))
     if prev_equity:
         deltas["equity_change"] = round(curr_equity - prev_equity, 2)
         deltas["equity_change_pct"] = round((curr_equity - prev_equity) / prev_equity * 100, 2)
@@ -156,19 +168,23 @@ def compute_deltas(current: dict, previous: dict):
     for sym, curr in curr_positions.items():
         if sym in prev_positions:
             prev = prev_positions[sym]
-            price_delta = curr["current_price"] - prev["current_price"]
-            price_delta_pct = (price_delta / prev["current_price"] * 100) if prev["current_price"] else 0
-            alloc_delta = curr.get("percentage", 0) - prev.get("percentage", 0)
+            curr_price = _to_float(curr.get("current_price", 0))
+            prev_price = _to_float(prev.get("current_price", 0))
+            curr_alloc = _to_float(curr.get("percentage", 0))
+            prev_alloc = _to_float(prev.get("percentage", 0))
+            price_delta = curr_price - prev_price
+            price_delta_pct = (price_delta / prev_price * 100) if prev_price else 0
+            alloc_delta = curr_alloc - prev_alloc
 
             if abs(price_delta_pct) >= 5 or abs(alloc_delta) >= 1:
                 deltas["price_changes"].append({
                     "symbol": sym,
-                    "old_price": prev["current_price"],
-                    "new_price": curr["current_price"],
+                    "old_price": prev_price,
+                    "new_price": curr_price,
                     "price_delta": round(price_delta, 2),
                     "price_delta_pct": round(price_delta_pct, 2),
-                    "old_alloc": prev.get("percentage", 0),
-                    "new_alloc": curr.get("percentage", 0),
+                    "old_alloc": prev_alloc,
+                    "new_alloc": curr_alloc,
                     "alloc_delta": round(alloc_delta, 2),
                 })
 
@@ -193,6 +209,7 @@ def write_obsidian_snapshot(data: dict, vault_path: Path):
     positions = data.get("positions", [])
     options = data.get("options", [])
     dividends = data.get("dividends_ytd", [])
+    dividends_total = sum(_to_float(d.get("amount", 0)) for d in dividends)
 
     # Find previous snapshot for deltas
     prev_snapshot_path = _find_previous_snapshot(snapshots_dir)
@@ -234,7 +251,7 @@ day_change_pct: {portfolio.get('day_change_pct', 0)}
 buying_power: {portfolio.get('buying_power', 0)}
 positions_count: {len(positions)}
 options_count: {len(options)}
-dividends_ytd: {sum(d['amount'] for d in dividends):.2f}
+dividends_ytd: {dividends_total:.2f}
 type: portfolio-snapshot
 ---
 
@@ -250,7 +267,7 @@ type: portfolio-snapshot
 | Previous Close | {_fmt_currency(portfolio.get('previous_close'))} |
 | Positions | {len(positions)} |
 | Options | {len(options)} |
-| Dividends YTD | {_fmt_currency(sum(d['amount'] for d in dividends))} |
+| Dividends YTD | {_fmt_currency(dividends_total)} |
 
 ## Positions
 
@@ -324,7 +341,7 @@ day_change_pct: {portfolio.get('day_change_pct', 0)}
 buying_power: {portfolio.get('buying_power', 0)}
 positions_count: {len(positions)}
 options_count: {len(options)}
-dividends_ytd: {sum(d['amount'] for d in dividends):.2f}
+dividends_ytd: {dividends_total:.2f}
 type: portfolio-snapshot
 ---
 
@@ -343,7 +360,7 @@ type: portfolio-snapshot
 | Previous Close | {_fmt_currency(portfolio.get('previous_close'))} |
 | Positions | {len(positions)} |
 | Options | {len(options)} |
-| Dividends YTD | {_fmt_currency(sum(d['amount'] for d in dividends))} |
+| Dividends YTD | {_fmt_currency(dividends_total)} |
 
 ## Changes Since Last Snapshot
 
@@ -444,16 +461,18 @@ def refresh_via_robin_stocks(cache_file: Path, cache_dir: Path, vault_path: Path
     options = []
     raw_options = rh.get_open_option_positions()
     for opt in raw_options:
-        chain = rh.get_option_instrument_data_by_id(opt.get("option_id", ""))
+        chain = rh.get_option_instrument_data_by_id(opt.get("option_id", "")) or {}
+        quantity = abs(_to_float(opt.get("quantity", 0)))
+        market_value = _to_float(opt.get("market_value", 0))
         options.append({
             "symbol": opt.get("chain_symbol", ""),
             "type": chain.get("type", ""),
-            "strike": float(chain.get("strike_price", 0)),
+            "strike": _to_float(chain.get("strike_price", 0)),
             "expiration": chain.get("expiration_date", ""),
-            "quantity": abs(float(opt.get("quantity", 0))),
-            "avg_cost": float(opt.get("average_price", 0)),
-            "current_price": float(opt.get("market_value", 0)) / abs(float(opt.get("quantity", 1))),
-            "market_value": float(opt.get("market_value", 0)),
+            "quantity": quantity,
+            "avg_cost": _to_float(opt.get("average_price", 0)),
+            "current_price": (market_value / quantity) if quantity else 0,
+            "market_value": market_value,
         })
 
     # Watchlist
