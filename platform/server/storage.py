@@ -23,6 +23,10 @@ class Store:
                 expires_at TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
                 available_at TEXT NOT NULL, error_code TEXT, lease_until TEXT,
                 provider_request_id TEXT)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS source_events (
+                id TEXT PRIMARY KEY, provider TEXT NOT NULL, channel TEXT NOT NULL,
+                symbol TEXT NOT NULL, received_at TEXT NOT NULL, first_seen_at TEXT NOT NULL,
+                payload TEXT NOT NULL)""")
 
     @contextmanager
     def connection(self):
@@ -73,9 +77,41 @@ class Store:
     def finish(self, signal_id, status, now, error_code=None, provider_request_id=None, retry_after_seconds=None):
         with self.connection() as db:
             row = db.execute("SELECT attempts FROM signals WHERE id=?", (signal_id,)).fetchone()
+            if row is None:
+                return
             if status == "retry" and row["attempts"] >= 3:
                 status = "failed"
             db.execute("""UPDATE signals SET status=?, available_at=?, error_code=?,
                 provider_request_id=?, lease_until=NULL WHERE id=?""",
                 (status, (now + timedelta(seconds=retry_after_seconds if retry_after_seconds is not None else 15 * 2 ** row["attempts"])).isoformat(),
                  error_code, provider_request_id, signal_id))
+
+    def record_source_event(self, provider, channel, symbol, payload, received_at):
+        if received_at.tzinfo is None or received_at.utcoffset() is None:
+            raise ValueError("Source-event receive time must be timezone-aware")
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        identity = hashlib.sha256(
+            f"{provider}\0{channel}\0{symbol}\0{serialized}".encode()
+        ).hexdigest()
+        stamp = received_at.astimezone(timezone.utc).isoformat()
+        with self.connection() as db:
+            db.execute("""INSERT OR IGNORE INTO source_events
+                (id,provider,channel,symbol,received_at,first_seen_at,payload)
+                VALUES (?,?,?,?,?,?,?)""",
+                (identity, provider, channel, symbol, stamp, stamp, serialized))
+            row = db.execute("SELECT first_seen_at FROM source_events WHERE id=?", (identity,)).fetchone()
+        return {"id": identity, "first_seen_at": row["first_seen_at"]}
+
+    def list_source_events(self, limit=100):
+        with self.connection() as db:
+            rows = db.execute(
+                "SELECT * FROM source_events ORDER BY first_seen_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{**dict(row), "payload": json.loads(row["payload"])} for row in rows]
+
+
+def create_store(settings):
+    if settings.database_url:
+        from .postgres import PostgresStore
+        return PostgresStore(settings.database_url)
+    return Store(settings.database_path)

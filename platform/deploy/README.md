@@ -1,12 +1,12 @@
 # Production handoff — not deployed
 
-Target: Google Cloud, one region, owner-only dashboard. The Dockerfile builds the local foundation; it is not a full production deployment recipe because production PostgreSQL and collectors are still missing.
+Target: Google Cloud, one region, owner-only dashboard. The Dockerfile builds the local foundation; it is not a full production deployment recipe because PostgreSQL operations, provider normalization/backfill, strategy rules and identity-aware access remain unverified or incomplete.
 
 ## Required before provisioning
 
 1. Select project, region and operating budget. Check worker-pool availability and quotas in that region. No cloud account, billing or deployment access has been validated in this session.
-2. Implement PostgreSQL storage/migrations and transactional outbox. Use row locking/skip-locked claims and bounded leases; test concurrent workers, crashes, restore and idempotency. Do not share SQLite across service containers.
-3. Implement/validate UW and optional licensed price collector, calendar, source archive and the versioned strategy engine. Bind approvals to exact strategy versions. Verify stale/delayed/missing data blocks each relevant strategy.
+2. Validate the PostgreSQL migration and transactional outbox against a real test database. Use row locking/skip-locked claims and bounded leases; test concurrent workers, crashes, restore and idempotency. Do not share SQLite across service containers.
+3. Validate the Unusual Whales adapter against current official schemas and authorized entitlements. Implement normalization and source-specific gap backfill; integrate licensed price sources, calendar and versioned strategy rules. Bind approvals to exact strategy versions and verify stale/delayed/missing data blocks each relevant strategy.
 4. Create separate service identities for API, collector, notifications and research. Keep provider secrets in Secret Manager. The browser receives no provider credentials.
 5. Configure private dashboard identity (IAP/verified OIDC). The starter bearer token is a local access mechanism. Public TradingView ingress must be isolated and sender-authenticated, not pointed directly at the protected candidate endpoint.
 

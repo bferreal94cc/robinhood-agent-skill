@@ -10,6 +10,7 @@ class Settings:
     pushover_token: str = ""
     pushover_user: str = ""
     database_path: str = "./var/spybot-dev.sqlite3"
+    database_url: str = ""
 
     @classmethod
     def from_environment(cls):
@@ -20,6 +21,7 @@ class Settings:
             pushover_token=os.getenv("PUSHOVER_APP_TOKEN", ""),
             pushover_user=os.getenv("PUSHOVER_USER_KEY", ""),
             database_path=os.getenv("SPYBOT_DATABASE_PATH", "./var/spybot-dev.sqlite3"),
+            database_url=os.getenv("SPYBOT_DATABASE_URL", ""),
         )
 
     @property

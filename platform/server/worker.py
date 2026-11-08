@@ -5,7 +5,7 @@ import threading
 
 from .config import Settings
 from .notifications import process_once
-from .storage import Store
+from .storage import create_store
 
 
 def main():
@@ -14,7 +14,7 @@ def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     settings = Settings.from_environment()
-    store = Store(settings.database_path)
+    store = create_store(settings)
     logging.info("Notification worker started; delivery enabled=%s", settings.can_send)
     while not stop.is_set():
         try:

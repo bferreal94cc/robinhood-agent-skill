@@ -9,13 +9,13 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import Settings
 from .models import Candidate, rejection_reasons
-from .storage import Store
+from .storage import create_store
 
 
 def create_app(settings: Settings | None = None):
     settings = settings or Settings.from_environment()
     app = FastAPI(title="SPYBOT Alert Platform", docs_url=None, redoc_url=None, openapi_url=None)
-    store = Store(settings.database_path)
+    store = create_store(settings)
     bearer = HTTPBearer(auto_error=False)
 
     def authorize(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
@@ -47,8 +47,10 @@ def create_app(settings: Settings | None = None):
                 "notifications_enabled": settings.notifications_enabled,
                 "providers": [{"name": name, "status": "configured_unverified" if present else "missing"} for name, present in pairs],
                 "signals": store.list_signals(), "server_time": datetime.now(timezone.utc).isoformat(),
-                "timezone": "America/New_York", "storage": "sqlite_development_single_host",
-                "blockers": ["Market ingestion and strategy scanner are not implemented", "Production PostgreSQL deployment is not configured"],
+                "timezone": "America/New_York",
+                "storage": "postgresql_unverified" if settings.database_url else "sqlite_development_single_host",
+                "blockers": ["Collectors are not started; provider normalization and strategy rules are not configured",
+                             "PostgreSQL connection, backups, and concurrent-worker recovery are not verified"],
                 "device_delivered": None}
 
     @app.get("/api/signals", dependencies=[Depends(authorize)])

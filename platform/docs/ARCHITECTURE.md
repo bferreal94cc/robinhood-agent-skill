@@ -6,7 +6,7 @@ Design dated 2026-11-08. Owner: Dakota. Scope: **execution means notifying the o
 
 Use a Python signal service, a mobile-first web dashboard, persistent collectors, PostgreSQL, a durable notification outbox, and Pushover. Google Cloud is the recommended production base because it fits the existing SPYBOT direction and separates continuous streams from request-driven services. Render web + background worker + PostgreSQL is the simpler alternative. A single VPS is cheaper to reason about initially but transfers patching, backups and recovery to the owner. Do not introduce Kubernetes for this personal workload.
 
-The first implementation is a **local development foundation**: authenticated candidate ingestion, deterministic evidence gates, SQLite outbox, notification worker, and dashboard. It is deliberately blocked until strategy review. It does not yet collect market feeds or evaluate complete SPYBOT strategies automatically. SQLite is not a shared Cloud Run database.
+The current implementation is a **local development foundation**: authenticated candidate ingestion, SQLite outbox, notification worker, dashboard, read-only Unusual Whales adapter/collector, raw source-event archive, PostgreSQL store/migration, source-quality checks, and XNYS session calendar. Collectors are not started by the app, provider payloads are not normalized into trusted observations, and no complete SPYBOT strategy rules are configured. Signal generation remains blocked until rules and approval are bound to an exact version. SQLite is not a shared Cloud Run database; PostgreSQL has not been integration-tested here.
 
 ```mermaid
 flowchart TD
@@ -57,7 +57,7 @@ The current STRATEGY_SIGNOFF.md (v1.0) says REVIEW ONLY. Preserve pending status
 
 Production stages: observe → normalize → classify regime → form setup → confirm → check freshness/conflicts/session/event/liquidity/chop → emit unique signal → invalidate/expire → notify. Exit signals and reversal signals remain separate; a pullback or exit must not flip direction automatically. All required feeds must pass their own age budgets. An LLM cannot override a blocked gate.
 
-The first code slice accepts explicit candidate evidence from a trusted producer. It validates the envelope and booleans; it does not prove those booleans from real source data. Before activation, implement the producer, immutable source snapshots, per-input freshness, exchange-calendar checks and strategy approval binding to a version/hash. The approval environment flag is a local development control, not an owner-signature workflow.
+The candidate endpoint accepts explicit evidence from a trusted producer and does not prove its assertions. The new source-quality module validates provided live/fresh/complete/entitlement metadata, while the collector currently archives only raw frames and does not produce those normalized observations. The XNYS calendar includes holidays and early closes. Strategy readiness is version-hash bound but intentionally returns blocked because deterministic strategy rules and owner approval are absent. The approval environment flag is a local development control, not an owner-signature workflow.
 
 ## Alert delivery semantics
 
