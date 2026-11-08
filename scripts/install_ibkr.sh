@@ -30,8 +30,16 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --non-interactive) NON_INTERACTIVE=true; shift ;;
     --skip-credentials) SKIP_CREDENTIALS=true; shift ;;
-    --agent) AGENT="$2"; shift 2 ;;
-    --source) SKILL_SOURCE="$2"; shift 2 ;;
+    --agent)
+      [[ $# -ge 2 ]] || fail "Missing value for --agent"
+      AGENT="$2"
+      shift 2
+      ;;
+    --source)
+      [[ $# -ge 2 ]] || fail "Missing value for --source"
+      SKILL_SOURCE="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: bash scripts/install_ibkr.sh [options]"
       echo ""
@@ -59,10 +67,8 @@ ok "Python 3 found: $(python3 --version 2>&1 | head -1)"
 
 if command -v uvx &>/dev/null; then
   ok "uvx found (recommended MCP runner)"
-elif command -v pip &>/dev/null || command -v pip3 &>/dev/null; then
-  warn "uvx not found. Install uv for best experience: curl -LsSf https://astral.sh/uv/install.sh | sh"
 else
-  fail "Neither uvx nor pip were found. Install uv or pip first."
+  fail "uvx is required for generated MCP configs. Install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh"
 fi
 
 if command -v node &>/dev/null; then
@@ -108,6 +114,8 @@ if [[ -z "$IBKR_ACCOUNT" && "$SKIP_CREDENTIALS" != "true" ]]; then
   warn "IBKR_ACCOUNT is empty. MCP tools may not initialize correctly until it is set."
 fi
 
+export IBKR_HOST IBKR_PORT IBKR_CLIENT_ID IBKR_ACCOUNT IBKR_MCP_MARKET_DATA_TYPE
+
 if [[ -z "$AGENT" ]]; then
   if [[ "$NON_INTERACTIVE" == "true" ]]; then
     AGENT="all"
@@ -141,6 +149,94 @@ fi
 HERMES_DIR="$HOME/.hermes"
 CONFIGURED_AGENTS=()
 
+write_json_config() {
+  local file_path="$1"
+  local root_key="$2"
+  CONFIG_PATH="$file_path" ROOT_KEY="$root_key" python3 <<'PY'
+import json
+import os
+
+config = {
+    os.environ["ROOT_KEY"]: {
+        "ibkr": {
+            "command": "uvx",
+            "args": ["ibkr-mcp"],
+            "env": {
+                "IBKR_HOST": os.environ["IBKR_HOST"],
+                "IBKR_PORT": os.environ["IBKR_PORT"],
+                "IBKR_CLIENT_ID": os.environ["IBKR_CLIENT_ID"],
+                "IBKR_ACCOUNT": os.environ["IBKR_ACCOUNT"],
+                "IBKR_MCP_MARKET_DATA_TYPE": os.environ["IBKR_MCP_MARKET_DATA_TYPE"],
+            },
+        }
+    }
+}
+with open(os.environ["CONFIG_PATH"], "w", encoding="utf-8") as f:
+    json.dump(config, f, indent=2)
+PY
+}
+
+merge_json_mcp_server() {
+  local file_path="$1"
+  local root_key="$2"
+  CONFIG_PATH="$file_path" ROOT_KEY="$root_key" python3 <<'PY'
+import json
+import os
+
+path = os.environ["CONFIG_PATH"]
+root_key = os.environ["ROOT_KEY"]
+with open(path, "r", encoding="utf-8") as f:
+    config = json.load(f)
+config.setdefault(root_key, {})["ibkr"] = {
+    "command": "uvx",
+    "args": ["ibkr-mcp"],
+    "env": {
+        "IBKR_HOST": os.environ["IBKR_HOST"],
+        "IBKR_PORT": os.environ["IBKR_PORT"],
+        "IBKR_CLIENT_ID": os.environ["IBKR_CLIENT_ID"],
+        "IBKR_ACCOUNT": os.environ["IBKR_ACCOUNT"],
+        "IBKR_MCP_MARKET_DATA_TYPE": os.environ["IBKR_MCP_MARKET_DATA_TYPE"],
+    },
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(config, f, indent=2)
+PY
+}
+
+merge_hermes_yaml() {
+  local file_path="$1"
+  CONFIG_PATH="$file_path" python3 <<'PY'
+import os
+import sys
+
+try:
+    import yaml
+except Exception:
+    sys.exit(1)
+
+path = os.environ["CONFIG_PATH"]
+with open(path, "r", encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+
+config.setdefault("mcp_servers", {})["ibkr"] = {
+    "command": "uvx",
+    "args": ["ibkr-mcp"],
+    "env": {
+        "IBKR_HOST": os.environ["IBKR_HOST"],
+        "IBKR_PORT": os.environ["IBKR_PORT"],
+        "IBKR_CLIENT_ID": os.environ["IBKR_CLIENT_ID"],
+        "IBKR_ACCOUNT": os.environ["IBKR_ACCOUNT"],
+        "IBKR_MCP_MARKET_DATA_TYPE": os.environ["IBKR_MCP_MARKET_DATA_TYPE"],
+    },
+    "timeout": 60,
+    "connect_timeout": 30,
+}
+
+with open(path, "w", encoding="utf-8") as f:
+    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+PY
+}
+
 configure_hermes() {
   info "Configuring Hermes Agent..."
 
@@ -155,48 +251,11 @@ configure_hermes() {
     if grep -q "^[[:space:]]*ibkr:" "$CONFIG_FILE" 2>/dev/null; then
       ok "IBKR MCP already configured in config.yaml"
     else
-      python3 -c "
-import sys
-try:
-    import yaml
-except Exception:
-    sys.exit(1)
-with open('$CONFIG_FILE', 'r', encoding='utf-8') as f:
-    config = yaml.safe_load(f) or {}
-config.setdefault('mcp_servers', {})['ibkr'] = {
-    'command': 'uvx',
-    'args': ['ibkr-mcp'],
-    'env': {
-        'IBKR_HOST': '$IBKR_HOST',
-        'IBKR_PORT': '$IBKR_PORT',
-        'IBKR_CLIENT_ID': '$IBKR_CLIENT_ID',
-        'IBKR_ACCOUNT': '$IBKR_ACCOUNT',
-        'IBKR_MCP_MARKET_DATA_TYPE': '$IBKR_MCP_MARKET_DATA_TYPE',
-    },
-    'timeout': 60,
-    'connect_timeout': 30,
-}
-with open('$CONFIG_FILE', 'w', encoding='utf-8') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-" 2>/dev/null || {
-        cat >> "$CONFIG_FILE" << YAML_EOF
-
-mcp_servers:
-  ibkr:
-    command: uvx
-    args:
-      - ibkr-mcp
-    env:
-      IBKR_HOST: "${IBKR_HOST}"
-      IBKR_PORT: "${IBKR_PORT}"
-      IBKR_CLIENT_ID: "${IBKR_CLIENT_ID}"
-      IBKR_ACCOUNT: "${IBKR_ACCOUNT}"
-      IBKR_MCP_MARKET_DATA_TYPE: "${IBKR_MCP_MARKET_DATA_TYPE}"
-    timeout: 60
-    connect_timeout: 30
-YAML_EOF
-      }
-      ok "Added IBKR MCP config to config.yaml"
+      if merge_hermes_yaml "$CONFIG_FILE" 2>/dev/null; then
+        ok "Added IBKR MCP config to config.yaml"
+      else
+        fail "Could not merge IBKR into existing Hermes config.yaml automatically. Install PyYAML or merge templates/ibkr-config-snippet.yaml manually."
+      fi
     fi
   else
     mkdir -p "$HERMES_DIR"
@@ -241,26 +300,9 @@ configure_claude_code() {
 
   MCP_FILE="$HOME/.mcp.json"
   if [[ -f "$MCP_FILE" ]]; then
-    python3 -c "
-import json
-with open('$MCP_FILE', 'r', encoding='utf-8') as f:
-    config = json.load(f)
-config.setdefault('mcpServers', {})['ibkr'] = {
-    'command': 'uvx',
-    'args': ['ibkr-mcp'],
-    'env': {
-      'IBKR_HOST': '$IBKR_HOST',
-      'IBKR_PORT': '$IBKR_PORT',
-      'IBKR_CLIENT_ID': '$IBKR_CLIENT_ID',
-      'IBKR_ACCOUNT': '$IBKR_ACCOUNT',
-      'IBKR_MCP_MARKET_DATA_TYPE': '$IBKR_MCP_MARKET_DATA_TYPE'
-    }
-}
-with open('$MCP_FILE', 'w', encoding='utf-8') as f:
-    json.dump(config, f, indent=2)
-" 2>/dev/null || warn "Could not merge .mcp.json. Add manually from templates/ibkr-claude-code-mcp.json"
+    merge_json_mcp_server "$MCP_FILE" "mcpServers" 2>/dev/null || warn "Could not merge .mcp.json. Add manually from templates/ibkr-claude-code-mcp.json"
   else
-    cp "$SKILL_SOURCE/templates/ibkr-claude-code-mcp.json" "$MCP_FILE"
+    write_json_config "$MCP_FILE" "mcpServers"
   fi
 
   SKILL_DIR="$HOME/.claude/skills/ibkr"
@@ -282,26 +324,9 @@ configure_claude_desktop() {
   mkdir -p "$(dirname "$DESKTOP_CONFIG")"
 
   if [[ -f "$DESKTOP_CONFIG" ]]; then
-    python3 -c "
-import json
-with open('$DESKTOP_CONFIG', 'r', encoding='utf-8') as f:
-    config = json.load(f)
-config.setdefault('mcpServers', {})['ibkr'] = {
-    'command': 'uvx',
-    'args': ['ibkr-mcp'],
-    'env': {
-      'IBKR_HOST': '$IBKR_HOST',
-      'IBKR_PORT': '$IBKR_PORT',
-      'IBKR_CLIENT_ID': '$IBKR_CLIENT_ID',
-      'IBKR_ACCOUNT': '$IBKR_ACCOUNT',
-      'IBKR_MCP_MARKET_DATA_TYPE': '$IBKR_MCP_MARKET_DATA_TYPE'
-    }
-}
-with open('$DESKTOP_CONFIG', 'w', encoding='utf-8') as f:
-    json.dump(config, f, indent=2)
-" 2>/dev/null || warn "Could not merge Claude Desktop config. Add manually from templates/ibkr-claude-desktop.json"
+    merge_json_mcp_server "$DESKTOP_CONFIG" "mcpServers" 2>/dev/null || warn "Could not merge Claude Desktop config. Add manually from templates/ibkr-claude-desktop.json"
   else
-    cp "$SKILL_SOURCE/templates/ibkr-claude-desktop.json" "$DESKTOP_CONFIG"
+    write_json_config "$DESKTOP_CONFIG" "mcpServers"
   fi
 
   ok "Claude Desktop configured ($DESKTOP_CONFIG)"
@@ -318,7 +343,7 @@ configure_codex() {
   if [[ -f "$CODEX_CONFIG" ]]; then
     warn "Codex config exists. Add MCP config manually from templates/ibkr-codex.json"
   else
-    cp "$SKILL_SOURCE/templates/ibkr-codex.json" "$CODEX_CONFIG"
+    write_json_config "$CODEX_CONFIG" "mcpServers"
   fi
 
   SKILL_DIR="$CODEX_DIR/skills/ibkr"
@@ -339,7 +364,7 @@ configure_opencode() {
   if [[ -f "$OPENCODE_CONFIG" ]]; then
     warn "OpenCode config exists. Add MCP config manually from templates/ibkr-opencode.json"
   else
-    cp "$SKILL_SOURCE/templates/ibkr-opencode.json" "$OPENCODE_CONFIG"
+    write_json_config "$OPENCODE_CONFIG" "mcp"
   fi
 
   ok "OpenCode configured"
@@ -356,7 +381,7 @@ configure_cline() {
   if [[ -f "$CLINE_MCP" ]]; then
     warn "Cline MCP config exists. Add IBKR config manually from templates/ibkr-cline-mcp.json"
   else
-    cp "$SKILL_SOURCE/templates/ibkr-cline-mcp.json" "$CLINE_MCP"
+    write_json_config "$CLINE_MCP" "mcpServers"
   fi
 
   ok "Cline configured"
@@ -373,7 +398,7 @@ configure_windsurf() {
   if [[ -f "$WINDSURF_MCP" ]]; then
     warn "Windsurf MCP config exists. Add IBKR config manually from templates/ibkr-windsurf-mcp.json"
   else
-    cp "$SKILL_SOURCE/templates/ibkr-windsurf-mcp.json" "$WINDSURF_MCP"
+    write_json_config "$WINDSURF_MCP" "mcpServers"
   fi
 
   ok "Windsurf configured"
