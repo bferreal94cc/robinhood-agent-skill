@@ -51,7 +51,9 @@ If you run `scripts/refresh_cache.py` in GitHub Actions, add these repository se
 
 - `ROBINHOOD_USERNAME` (required)
 - `ROBINHOOD_PASSWORD` (required)
-- `ROBINHOOD_TOTP_SECRET` (optional)
+- `ROBINHOOD_TOTP_SECRET` (optional, only for authenticator app 2FA)
+  - Must be the **Base32 seed** from your authenticator setup (characters `A-Z` and `2-7`, optional `=` padding).
+  - Do **not** use a one-time 6-digit login code.
 
 This repo includes `.github/workflows/refresh-robinhood-cache.yml`, which reads those secrets and runs:
 

@@ -19,26 +19,37 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate secrets
+        id: validate-secrets
+        run: |
+          if [ -z "$ROBINHOOD_USERNAME" ] || [ -z "$ROBINHOOD_PASSWORD" ]; then
+            echo "Skipping cache refresh: required ROBINHOOD_USERNAME/ROBINHOOD_PASSWORD secrets are not set."
+            echo "can_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -n "$ROBINHOOD_TOTP_SECRET" ]; then
+            normalized_totp_secret=$(printf '%s' "$ROBINHOOD_TOTP_SECRET" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]-')
+            if ! printf '%s' "$normalized_totp_secret" | grep -Eq '^[A-Z2-7]+=*$'; then
+              echo "Invalid ROBINHOOD_TOTP_SECRET format. Use the Base32 authenticator seed (letters A-Z and digits 2-7), not a 6-digit OTP code."
+              exit 1
+            fi
+          fi
+
+          echo "can_run=true" >> "$GITHUB_OUTPUT"
+
       - name: Set up Python
+        if: steps.validate-secrets.outputs.can_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.validate-secrets.outputs.can_run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install robin-stocks pyotp
 
-      - name: Validate required secrets
-        run: |
-          if [ -z "$ROBINHOOD_USERNAME" ]; then
-            echo "Missing ROBINHOOD_USERNAME secret"
-            exit 1
-          fi
-          if [ -z "$ROBINHOOD_PASSWORD" ]; then
-            echo "Missing ROBINHOOD_PASSWORD secret"
-            exit 1
-          fi
-
       - name: Refresh cache
+        if: steps.validate-secrets.outputs.can_run == 'true'
         run: python scripts/refresh_cache.py --json-only --force
