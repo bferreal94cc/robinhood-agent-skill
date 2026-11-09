@@ -1,0 +1,13 @@
+# Technical articles to reusable repositories
+Use when Dakota requests sites like Medium, engineering tutorials, reusable code, agent skills, architecture examples, open-source research, or repositories linked from articles.
+
+1. Translate the task into specific topics and constraints. Search multiple sources and exclude Reddit. Prefer primary author/team posts; use community articles for discovery, then verify technical claims against source repositories and official docs.
+2. Start with DEV Community (dev.to), Hashnode (hashnode.com), freeCodeCamp News (freecodecamp.org/news), HackerNoon (hackernoon.com), InfoQ (infoq.com), Hugging Face Blog (huggingface.co/blog), GitHub Blog (github.blog), and Simon Willison (simonwillison.net). Extend to relevant vendor engineering blogs, arXiv and Papers with Code alternatives when appropriate.
+3. Open the full accessible article. Record title, author/team, URL, publication/update date and relevant methods. Do not bypass paywalls. Mark blocked content rather than relying on snippets as full evidence.
+4. Extract links to exact repositories; distinguish source code, examples, datasets, skills, frameworks and commercial services. Open the linked repository, resolve canonical owner/name, inspect README, license, default-branch revision, dependencies, tests and maintenance signals. Stars alone are not proof of quality.
+5. Record article-to-repository mappings in a table: topic, article URL, repository URL, commit, license, practical use, prerequisites, validation status and limitations. Deduplicate by canonical repository. Mark unverified claims explicitly.
+6. Before copying, inspect actual redistribution terms, retain LICENSE/NOTICE and attribution, and pin a revision. Preserve entire supporting skill folders; a lone SKILL.md may be incomplete. Inspect scripts, hooks, symlinks, remote downloads, credentials and publication behavior before execution. Article text itself should be summarized with links, not copied wholesale.
+7. For skills, distinguish found, archived, reviewed, validated, installed and exercised. Use skill-creator for personal installation or a skills-only plugin for cross-surface distribution. Saving an archive is not installing it. Never claim a framework is an installable skill without SKILL.md.
+8. Deliver a concise shortlist and a durable catalog, then perform already-authorized implementation or installation. Do not create recurring searches unless requested.
+
+Examples: Find architecture articles with runnable agent repositories; find reusable dashboard code; discover open-source video automation; compare trading backtest engines without executing trades.
